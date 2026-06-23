@@ -326,6 +326,8 @@
                             <div id="searchDropdown" class="search-dropdown hidden"></div>
                         </div>
                         <input type="number" id="itemQuantity" class="input-field" placeholder="Quantidade" min="1">
+                        <input type="number" id="itemQuantityM" class="input-field hidden" placeholder="Qtd Masculina" min="0">
+                        <input type="number" id="itemQuantityF" class="input-field hidden" placeholder="Qtd Feminina" min="0">
                         <input type="text" id="itemOthers" class="input-field" placeholder="Observacoes">
                         <button class="btn-primary" onclick="addItem()">Adicionar Item</button>
                     </div>
@@ -938,6 +940,29 @@
         document.getElementById('productSearch').value = '';
         selectedProduct = null;
         document.getElementById('searchDropdown').classList.add('hidden');
+        
+        // Toggle quantity fields based on estoque type
+        const estoque = document.getElementById('orderEstoque').value;
+        const qtyField = document.getElementById('itemQuantity');
+        const qtyMField = document.getElementById('itemQuantityM');
+        const qtyFField = document.getElementById('itemQuantityF');
+        
+        if (estoque === 'Estoque Capa') {
+            // Hide single quantity, show M/F fields
+            qtyField.classList.add('hidden');
+            qtyMField.classList.remove('hidden');
+            qtyFField.classList.remove('hidden');
+        } else {
+            // Show single quantity, hide M/F fields
+            qtyField.classList.remove('hidden');
+            qtyMField.classList.add('hidden');
+            qtyFField.classList.add('hidden');
+        }
+        
+        // Clear all quantity fields
+        qtyField.value = '';
+        qtyMField.value = '';
+        qtyFField.value = '';
     }
     function searchProducts() {
         const term = document.getElementById('productSearch').value.toLowerCase();
@@ -963,13 +988,44 @@
         if (!e.target.closest('.search-container')) document.getElementById('searchDropdown').classList.add('hidden');
     });
     function addItem() {
-        const qty = document.getElementById('itemQuantity').value;
         const estoque = document.getElementById('orderEstoque').value;
         const others = document.getElementById('itemOthers').value;
-        if (!qty || !selectedProduct) { alert('Preencha quantidade e selecione um produto!'); return; }
+        
+        if (!selectedProduct) { alert('Selecione um produto!'); return; }
         if (!estoque) { alert('Selecione o estoque!'); return; }
-        currentOrderItems.push({ quantity: parseInt(qty), product: selectedProduct.name, estoque: selectedProduct.estoque, others: others });
-        document.getElementById('itemQuantity').value = '';
+        
+        let itemData = { product: selectedProduct.name, estoque: selectedProduct.estoque, others: others };
+        
+        if (estoque === 'Estoque Capa') {
+            // Handle M/F quantities
+            const qtyM = parseInt(document.getElementById('itemQuantityM').value) || 0;
+            const qtyF = parseInt(document.getElementById('itemQuantityF').value) || 0;
+            
+            if (qtyM === 0 && qtyF === 0) { 
+                alert('Informe pelo menos uma quantidade (Masculina ou Feminina)!'); 
+                return; 
+            }
+            
+            itemData.quantityM = qtyM;
+            itemData.quantityF = qtyF;
+            itemData.quantity = qtyM + qtyF; // Total quantity for calculations
+            
+            document.getElementById('itemQuantityM').value = '';
+            document.getElementById('itemQuantityF').value = '';
+        } else {
+            // Handle single quantity
+            const qty = parseInt(document.getElementById('itemQuantity').value);
+            
+            if (!qty || qty < 1) { 
+                alert('Informe a quantidade!'); 
+                return; 
+            }
+            
+            itemData.quantity = qty;
+            document.getElementById('itemQuantity').value = '';
+        }
+        
+        currentOrderItems.push(itemData);
         document.getElementById('productSearch').value = '';
         document.getElementById('itemOthers').value = '';
         selectedProduct = null;
@@ -983,7 +1039,20 @@
         c.innerHTML = '';
         currentOrderItems.forEach(function(item, i) {
             const div = document.createElement('div'); div.className = 'order-item';
-            div.innerHTML = '<div class="order-item-info"><strong>' + item.quantity + 'x ' + item.product + '</strong>' +
+            
+            // Format quantity display based on stock type
+            let qtyDisplay = '';
+            if (item.estoque === 'Estoque Capa' && (item.quantityM !== undefined || item.quantityF !== undefined)) {
+                // Capa: show M/F split
+                const qtyM = item.quantityM || 0;
+                const qtyF = item.quantityF || 0;
+                qtyDisplay = item.product + ': ' + qtyM + 'M ' + qtyF + 'F';
+            } else {
+                // Regular: show single quantity
+                qtyDisplay = item.quantity + 'x ' + item.product;
+            }
+            
+            div.innerHTML = '<div class="order-item-info"><strong>' + qtyDisplay + '</strong>' +
                 (item.others ? '<br><small style="color:#6b7280;">' + item.others + '</small>' : '') + '</div>' +
                 '<button class="btn-danger" onclick="removeItem(' + i + ')">Remover</button>';
             c.appendChild(div);
@@ -1017,7 +1086,20 @@
         const order = cacheOrders.find(function(o) { return o.id === orderId; });
         if (!order) return;
         let text = 'Pedido ' + order.storeName + ' - ' + (order.estoque || 'Sem estoque') + '\nData: ' + order.date + '\n\n';
-        order.items.forEach(function(item) { text += item.quantity + ' ' + item.product + (item.others ? ' ' + item.others : '') + '\n'; });
+        order.items.forEach(function(item) { 
+            // Format based on stock type
+            let itemText = '';
+            if (item.estoque === 'Estoque Capa' && (item.quantityM !== undefined || item.quantityF !== undefined)) {
+                // Capa: show M/F split
+                const qtyM = item.quantityM || 0;
+                const qtyF = item.quantityF || 0;
+                itemText = item.product + ': ' + qtyM + 'M ' + qtyF + 'F';
+            } else {
+                // Regular: show single quantity
+                itemText = item.quantity + ' ' + item.product;
+            }
+            text += itemText + (item.others ? ' ' + item.others : '') + '\n'; 
+        });
         navigator.clipboard.writeText(text).then(function() { alert('Pedido copiado!'); }).catch(function() {
             const ta = document.createElement('textarea'); ta.value = text;
             document.body.appendChild(ta); ta.select();
@@ -1070,7 +1152,20 @@
             const rq = cd ? cd.receivedQuantity : '';
             const div = document.createElement('div'); div.className = 'order-item';
             div.style.flexDirection = 'column'; div.style.alignItems = 'stretch';
-            let innerHtml = '<div><strong>' + item.quantity + 'x ' + item.product + '</strong>' +
+            
+            // Format quantity display based on stock type
+            let qtyDisplay = '';
+            if (item.estoque === 'Estoque Capa' && (item.quantityM !== undefined || item.quantityF !== undefined)) {
+                // Capa: show M/F split
+                const qtyM = item.quantityM || 0;
+                const qtyF = item.quantityF || 0;
+                qtyDisplay = item.product + ': ' + qtyM + 'M ' + qtyF + 'F';
+            } else {
+                // Regular: show single quantity
+                qtyDisplay = item.quantity + 'x ' + item.product;
+            }
+            
+            let innerHtml = '<div><strong>' + qtyDisplay + '</strong>' +
                 (item.others ? '<br><small style="color:#6b7280;">' + item.others + '</small>' : '') + '</div>';
             if (isChecked) {
                 const color = cs === 'Correto' ? '#059669' : cs === 'Faltando' ? '#d97706' : '#dc2626';
@@ -1130,7 +1225,20 @@
             const cd = order.checkData[index];
             let st = cd ? cd.status : 'Nao conferido';
             if (cd && cd.status === 'Faltando' && cd.receivedQuantity !== undefined) st += ' (Recebido: ' + cd.receivedQuantity + ')';
-            text += item.quantity + ' ' + item.product + (item.others ? ' ' + item.others : '') + ' [' + st + ']\n';
+            
+            // Format based on stock type
+            let itemText = '';
+            if (item.estoque === 'Estoque Capa' && (item.quantityM !== undefined || item.quantityF !== undefined)) {
+                // Capa: show M/F split
+                const qtyM = item.quantityM || 0;
+                const qtyF = item.quantityF || 0;
+                itemText = item.product + ': ' + qtyM + 'M ' + qtyF + 'F';
+            } else {
+                // Regular: show single quantity
+                itemText = item.quantity + ' ' + item.product;
+            }
+            
+            text += itemText + (item.others ? ' ' + item.others : '') + ' [' + st + ']\n';
         });
         navigator.clipboard.writeText(text).then(function() { alert('Conferencia copiada!'); });
     }
@@ -1304,7 +1412,20 @@
         container.innerHTML = '';
         order.items.forEach(function(item) {
             const div = document.createElement('div'); div.className = 'order-item';
-            div.innerHTML = '<div class="order-item-info"><strong>' + item.quantity + 'x ' + item.product + '</strong>' +
+            
+            // Format quantity display based on stock type
+            let qtyDisplay = '';
+            if (item.estoque === 'Estoque Capa' && (item.quantityM !== undefined || item.quantityF !== undefined)) {
+                // Capa: show M/F split
+                const qtyM = item.quantityM || 0;
+                const qtyF = item.quantityF || 0;
+                qtyDisplay = item.product + ': ' + qtyM + 'M ' + qtyF + 'F';
+            } else {
+                // Regular: show single quantity
+                qtyDisplay = item.quantity + 'x ' + item.product;
+            }
+            
+            div.innerHTML = '<div class="order-item-info"><strong>' + qtyDisplay + '</strong>' +
                 (item.others ? '<br><small style="color:#6b7280;">' + item.others + '</small>' : '') + '</div>';
             container.appendChild(div);
         });
