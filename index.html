@@ -520,6 +520,27 @@
             </div>
         </div>
     </div>
+    <div id="editProductModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Editar Produto</h3>
+            <div style="margin-bottom:15px;">
+                <label style="color:#374151;font-weight:600;display:block;margin-bottom:8px;">Nome do Produto</label>
+                <input type="text" id="editProductName" class="input-field" style="width:100%;" placeholder="Nome do produto">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="color:#374151;font-weight:600;display:block;margin-bottom:8px;">Estoque</label>
+                <select id="editProductEstoque" class="input-field" style="width:100%;">
+                    <option value="Estoque Produtos">Estoque Produtos</option>
+                    <option value="Estoque Nicola">Estoque Nicola</option>
+                    <option value="Estoque Capa">Estoque Capa</option>
+                </select>
+            </div>
+            <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn-success" onclick="saveEditProduct()">Salvar Alteracoes</button>
+                <button class="btn-danger" onclick="closeEditProductModal()" style="padding:12px 24px;">Cancelar</button>
+            </div>
+        </div>
+    </div>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -713,6 +734,15 @@
         await cols.products.doc(docId).delete();
         cacheProducts = cacheProducts.filter(p => p.id !== docId);
     }
+    async function fsUpdateProduct(docId, name, estoque) {
+        const cols = userCollections();
+        await cols.products.doc(docId).update({ name, estoque });
+        const idx = cacheProducts.findIndex(p => p.id === docId);
+        if (idx !== -1) {
+            cacheProducts[idx].name = name;
+            cacheProducts[idx].estoque = estoque;
+        }
+    }
     async function fsAddOrder(orderData) {
         const cols = userCollections();
         const ref = await cols.orders.add({ ...orderData, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
@@ -879,7 +909,9 @@
             html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;margin-bottom:6px;border-left:3px solid #2563eb;">' +
                 '<div><span style="color:#374151;font-weight:600;">' + p.name + '</span>' +
                 '<span style="color:#2563eb;font-size:11px;padding:2px 8px;background:#eff6ff;border-radius:6px;margin-left:10px;">' + p.estoque + '</span></div>' +
-                '<button class="btn-danger btn-small" onclick="removeProduct(\'' + p.id + '\')">Remover</button></div>';
+                '<div style="display:flex;gap:8px;">' +
+                '<button class="btn-edit btn-small" onclick="editProduct(\'' + p.id + '\')">Editar</button>' +
+                '<button class="btn-danger btn-small" onclick="removeProduct(\'' + p.id + '\')">Remover</button></div></div>';
         });
         list.innerHTML = html;
         if (totalPages <= 1) { pag.innerHTML = '<span style="color:#6b7280;font-size:13px;">' + filtered.length + ' produto(s)</span>'; return; }
@@ -902,6 +934,42 @@
     async function removeProduct(docId) {
         if (confirm('Deseja remover este produto?')) { await fsDeleteProduct(docId); loadProducts(); updateStats(); }
     }
+    
+    let editingProductId = null;
+    
+    function editProduct(docId) {
+        const product = cacheProducts.find(p => p.id === docId);
+        if (!product) return;
+        
+        editingProductId = docId;
+        document.getElementById('editProductName').value = product.name;
+        document.getElementById('editProductEstoque').value = product.estoque;
+        document.getElementById('editProductModal').classList.remove('hidden');
+    }
+    
+    async function saveEditProduct() {
+        const name = document.getElementById('editProductName').value.trim();
+        const estoque = document.getElementById('editProductEstoque').value;
+        
+        if (!name) { alert('Digite o nome do produto!'); return; }
+        if (!estoque) { alert('Selecione o estoque!'); return; }
+        
+        // Verificar se já existe outro produto com o mesmo nome no mesmo estoque
+        const duplicate = cacheProducts.find(p => p.name === name && p.estoque === estoque && p.id !== editingProductId);
+        if (duplicate) { alert('Já existe um produto com este nome neste estoque!'); return; }
+        
+        await fsUpdateProduct(editingProductId, name, estoque);
+        closeEditProductModal();
+        loadProducts();
+        updateStats();
+        alert('Produto atualizado com sucesso!');
+    }
+    
+    function closeEditProductModal() {
+        document.getElementById('editProductModal').classList.add('hidden');
+        editingProductId = null;
+    }
+    
     function exportProducts() {
         if (cacheProducts.length === 0) { alert('Nenhum produto para exportar!'); return; }
         const data = { products: cacheProducts.map(p => ({ name: p.name, estoque: p.estoque })), exportDate: new Date().toLocaleString('pt-BR'), type: 'products' };
